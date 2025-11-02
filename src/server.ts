@@ -22,7 +22,7 @@ connectDB();
 
 // Initialize express app
 const app: Application = express();
-app.use(cors({ origin: "*" }));
+app.use(cors());
 
 app.use(express.json());
 
