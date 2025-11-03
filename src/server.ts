@@ -13,7 +13,7 @@ interface AppError extends Error {
 }
 import createError from "http-errors";
 import { Conversation } from "./models/conversation.model";
-import { Types } from "mongoose";
+import mongoose, { Types } from "mongoose";
 import { User } from "./models/user.model";
 import { Message } from "./models/message.model";
 import path from "path";
@@ -182,6 +182,35 @@ io.on("connection", async (socket: Socket) => {
       },
       timestamp: new Date(),
     });
+  });
+
+  socket.on("message-seen", async ({ conversationId }) => {
+    try {
+      const unseenMessages = await Message.find({
+        conversationId,
+        seenBy: { $ne: userId },
+      }).select("_id");
+
+      if (unseenMessages.length > 0) {
+        const ids = unseenMessages.map((m) => m._id);
+
+        await Message.updateMany(
+          { _id: { $in: ids } },
+          {
+            $addToSet: { seenBy: userId },
+            $set: { seenAt: new Date() },
+          }
+        );
+
+        // Notify room about all messages that were marked as seen
+        io.to(conversationId).emit("message-seen-update", {
+          messageIds: ids.map((id) => id.toString()),
+          seen: true,
+        });
+      }
+    } catch (error) {
+      console.error("Error updating seen:", error);
+    }
   });
 
   // Listen for typing events

@@ -1,14 +1,19 @@
 import { NextFunction, Request, Response } from "express";
 import { Message } from "../../models/message.model";
 import mongoose from "mongoose";
+import { AuthRequest } from "middleware/auth";
 
 export const getAllMessages = async (
-  req: Request,
+  req: AuthRequest,
   res: Response,
   next: NextFunction
 ) => {
   try {
     const { conversationId } = req.params;
+    const { _id: userId } = req.user;
+    console.log("🚀 ------------------------------------🚀");
+    console.log("🚀 ~ getAllMessages ~ userId:", userId);
+    console.log("🚀 ------------------------------------🚀");
     const messages = await Message.aggregate([
       {
         $match: {
@@ -32,6 +37,13 @@ export const getAllMessages = async (
         },
       },
       {
+        $addFields: {
+          read: {
+            $in: [new mongoose.Types.ObjectId(userId), "$seenBy"],
+          },
+        },
+      },
+      {
         $project: {
           _id: 1,
           sender: {
@@ -39,6 +51,7 @@ export const getAllMessages = async (
             email: "$senderInfo.email",
             avatar: "$senderInfo.photo",
           },
+          read: 1,
           content: "$content",
           senderId: 1,
           conversationId: 1,
@@ -52,6 +65,9 @@ export const getAllMessages = async (
       data: messages,
     });
   } catch (error) {
+    console.log("🚀 ----------------------------------🚀");
+    console.log("🚀 ~ getAllMessages ~ error:", error);
+    console.log("🚀 ----------------------------------🚀");
     next(error);
   }
 };
