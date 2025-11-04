@@ -15,6 +15,7 @@ export const RegisterUser = async (
 ) => {
   try {
     const { email, password } = req.body;
+    let JWTtoken;
     let user, encryptedPassword;
     req.body.hashId = `user-${generateUniqueCode()}`;
     user = await User.findOne({ email }).exec();
@@ -28,10 +29,12 @@ export const RegisterUser = async (
     });
 
     await user.save();
+    JWTtoken = await GenerateToken(user);
 
     res.status(201).json({
       message: "User registered successfully",
       user,
+      token: JWTtoken,
     });
   } catch (error) {
     next(error);
