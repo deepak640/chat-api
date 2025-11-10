@@ -44,6 +44,11 @@ export const getConversations = async (
   let pipeline: PipelineStage[] = [];
   pipeline.push(
     {
+      $match: {
+        participants: { $in: [new Types.ObjectId(userId)] },
+      },
+    },
+    {
       $addFields: {
         type: {
           $cond: {
