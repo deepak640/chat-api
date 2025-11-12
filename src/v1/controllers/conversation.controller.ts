@@ -39,13 +39,13 @@ export const getConversations = async (
   res: Response,
   next: NextFunction
 ) => {
-
-  const { _id: userId } = req.user;
+  let { _id: userId } = req.user;
   let pipeline: PipelineStage[] = [];
+  userId = new Types.ObjectId(userId);
   pipeline.push(
     {
       $match: {
-        participants: { $in: [new Types.ObjectId(userId)] },
+        participants: { $in: [userId] },
       },
     },
     {
@@ -62,14 +62,26 @@ export const getConversations = async (
     {
       $lookup: {
         from: "messages",
-        localField: "_id",
-        foreignField: "conversationId",
-        as: "lastMessage",
+        let: { convId: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$conversationId", "$$convId"] },
+                  // ✅ Filter: only messages not seen by the user
+                  { $not: { $in: [userId, "$seenBy"] } },
+                ],
+              },
+            },
+          },
+        ],
+        as: "messages",
       },
     },
     {
       $addFields: {
-        lastMessage: { $arrayElemAt: ["$lastMessage", -1] },
+        lastMessage: { $arrayElemAt: ["$messages", -1] },
       },
     },
     {
@@ -80,6 +92,7 @@ export const getConversations = async (
             { $ifNull: ["$lastMessage.updatedAt", null] },
           ],
         },
+        unreadCount: { $size: { $ifNull: ["$messages", []] } },
       },
     },
     {
@@ -88,6 +101,7 @@ export const getConversations = async (
       },
     }
   );
+  console.log("Aggregation Pipeline:", JSON.stringify(pipeline, null, 2));
   const conversations = await Conversation.aggregate(pipeline).exec();
   res.json({
     data: conversations,
