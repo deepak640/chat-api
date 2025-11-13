@@ -193,8 +193,9 @@ io.on("connection", async (socket: Socket) => {
     });
   });
 
-  socket.on("message-seen", async ({ conversationId }) => {
+  socket.on("message-seen", async ({ conversationId, currentUserId }) => {
     try {
+      // Find all unseen messages in the conversation for this user
       const unseenMessages = await Message.find({
         conversationId,
         seenBy: { $ne: userId },
@@ -211,6 +212,11 @@ io.on("connection", async (socket: Socket) => {
           }
         );
 
+        socket.to(conversationId).emit("unread-count-update", {
+          unreadCount: 0,
+          conversationId,
+          currentUserId,
+        });
         // Notify room about all messages that were marked as seen
         io.to(conversationId).emit("message-seen-update", {
           messageIds: ids.map((id) => id.toString()),
