@@ -20,7 +20,7 @@ export const authorizeUser = async (
       return res
         .status(401)
         .json({ message: "Authorization token missing or invalid" });
-    } 
+    }
 
     const token = authHeader.split(" ")[1];
 

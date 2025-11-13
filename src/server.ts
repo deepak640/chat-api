@@ -173,6 +173,15 @@ io.on("connection", async (socket: Socket) => {
       },
     });
     await message.save();
+    io.to(data.conversationId).emit("last-message", {
+      ...data,
+      sender: {
+        name: user?.name,
+        avatar: user?.photo,
+        email: user?.email,
+      },
+      timestamp: new Date(),
+    });
     io.to(data.conversationId).emit("receive-message", {
       ...data,
       sender: {

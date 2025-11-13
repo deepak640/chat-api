@@ -62,6 +62,14 @@ export const getConversations = async (
     {
       $lookup: {
         from: "messages",
+        localField: "_id",
+        foreignField: "conversationId",
+        as: "messages",
+      },
+    },
+    {
+      $lookup: {
+        from: "messages",
         let: { convId: "$_id" },
         pipeline: [
           {
@@ -76,7 +84,7 @@ export const getConversations = async (
             },
           },
         ],
-        as: "messages",
+        as: "unreadMessages",
       },
     },
     {
@@ -92,7 +100,7 @@ export const getConversations = async (
             { $ifNull: ["$lastMessage.updatedAt", null] },
           ],
         },
-        unreadCount: { $size: { $ifNull: ["$messages", []] } },
+        unreadCount: { $size: { $ifNull: ["$unreadMessages", []] } },
       },
     },
     {
@@ -101,7 +109,6 @@ export const getConversations = async (
       },
     }
   );
-  console.log("Aggregation Pipeline:", JSON.stringify(pipeline, null, 2));
   const conversations = await Conversation.aggregate(pipeline).exec();
   res.json({
     data: conversations,

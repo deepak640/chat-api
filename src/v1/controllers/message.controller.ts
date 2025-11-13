@@ -11,9 +11,6 @@ export const getAllMessages = async (
   try {
     const { conversationId } = req.params;
     const { _id: userId } = req.user;
-    console.log("🚀 ------------------------------------🚀");
-    console.log("🚀 ~ getAllMessages ~ userId:", userId);
-    console.log("🚀 ------------------------------------🚀");
     const messages = await Message.aggregate([
       {
         $match: {
