@@ -136,7 +136,13 @@ io.on("connection", async (socket: Socket) => {
     let ids: Types.ObjectId[] = [];
     if (unseenMessages.length > 0) {
       ids = unseenMessages.map((m) => m._id);
-
+      if (ids.length > 0) {
+        io.to(conversationId).emit("message-seen", {
+          conversationId,
+          status: true,
+          messageIds: ids,
+        });
+      }
       await Message.updateMany(
         { _id: { $in: ids } },
         {
@@ -150,11 +156,6 @@ io.on("connection", async (socket: Socket) => {
     io.to(conversationId as string).emit("user-status", {
       userId,
       status: true,
-      messageSeen: {
-        conversationId,
-        status: true,
-        messageIds: ids,
-      },
     });
 
     // Check the status of the other user in the conversation and notify the current user
@@ -165,6 +166,11 @@ io.on("connection", async (socket: Socket) => {
       socket.emit("user-status", {
         userId: otherUser.toString(),
         status: true,
+        messageSeen: {
+          conversationId,
+          status: true,
+          messageIds: ids,
+        },
       });
     }
   }
@@ -241,6 +247,7 @@ io.on("connection", async (socket: Socket) => {
     console.log("Emitting message to room:", otherUserId);
     io.to(data.conversationId).emit("receive-message", {
       ...data,
+      _id: message._id,
       sender: {
         name: user?.name,
         avatar: user?.photo,
