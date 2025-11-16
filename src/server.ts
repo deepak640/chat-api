@@ -11,6 +11,11 @@ import { errorHandler } from "./middlewares/errorHandler.middleware";
 interface AppError extends Error {
   statusCode?: number;
 }
+type MessageData = {
+  conversationId: string;
+  content: string;
+  hashId: string;
+};
 import createError from "http-errors";
 import { Conversation } from "./models/conversation.model";
 import mongoose, { Types } from "mongoose";
@@ -120,12 +125,36 @@ io.on("connection", async (socket: Socket) => {
 
   if (conversationId) {
     socket.join(conversationId as string);
+
+    // Mark unseen messages as seen by this user
     onlineUsers.set(userId, socket.id);
+    const unseenMessages = await Message.find({
+      conversationId,
+      seenBy: { $ne: userId },
+    }).select("_id");
+
+    let ids: Types.ObjectId[] = [];
+    if (unseenMessages.length > 0) {
+      ids = unseenMessages.map((m) => m._id);
+
+      await Message.updateMany(
+        { _id: { $in: ids } },
+        {
+          $addToSet: { seenBy: userId },
+          $set: { seenAt: new Date() },
+        }
+      );
+    }
 
     // Notify others in the room that this user is online
     io.to(conversationId as string).emit("user-status", {
       userId,
       status: true,
+      messageSeen: {
+        conversationId,
+        status: true,
+        messageIds: ids,
+      },
     });
 
     // Check the status of the other user in the conversation and notify the current user
@@ -154,11 +183,6 @@ io.on("connection", async (socket: Socket) => {
       conversationId,
     });
   });
-  type MessageData = {
-    conversationId: string;
-    content: string;
-    hashId: string;
-  };
 
   socket.on("send-message", async (data: MessageData) => {
     const user = await User.findById(userId);
@@ -173,6 +197,38 @@ io.on("connection", async (socket: Socket) => {
       },
     });
     await message.save();
+
+    let otherUserId: string[] = [];
+    onlineUsers.forEach((value, key) => {
+      if (key !== userId) {
+        otherUserId = [key];
+      }
+    });
+    const unseenMessages = await Message.find({
+      conversationId: data.conversationId,
+      seenBy: { $nin: otherUserId },
+    }).select("_id");
+
+    if (unseenMessages.length > 0) {
+      const ids = unseenMessages.map((m) => m._id);
+
+      await Message.updateMany(
+        { _id: { $in: ids } },
+        {
+          $addToSet: { seenBy: otherUserId },
+          $set: { seenAt: new Date() },
+        }
+      );
+
+      // Notify room about messages marked as seen by the other user
+
+      // Inform the other user (if connected) that their unread count is now zero
+      // socket.to(data.conversationId).emit("unread-count-update", {
+      //   unreadCount: 0,
+      //   conversationId: data.conversationId,
+      //   currentUserId: otherUserId[0],
+      // });
+    }
     io.to(data.conversationId).emit("last-message", {
       ...data,
       sender: {
@@ -182,6 +238,7 @@ io.on("connection", async (socket: Socket) => {
       },
       timestamp: new Date(),
     });
+    console.log("Emitting message to room:", otherUserId);
     io.to(data.conversationId).emit("receive-message", {
       ...data,
       sender: {
@@ -189,43 +246,9 @@ io.on("connection", async (socket: Socket) => {
         avatar: user?.photo,
         email: user?.email,
       },
+      read: otherUserId.length ? true : false,
       timestamp: new Date(),
     });
-  });
-
-  socket.on("message-seen", async ({ conversationId, currentUserId }) => {
-    try {
-      // Find all unseen messages in the conversation for this user
-      const unseenMessages = await Message.find({
-        conversationId,
-        seenBy: { $ne: userId },
-      }).select("_id");
-
-      if (unseenMessages.length > 0) {
-        const ids = unseenMessages.map((m) => m._id);
-
-        await Message.updateMany(
-          { _id: { $in: ids } },
-          {
-            $addToSet: { seenBy: userId },
-            $set: { seenAt: new Date() },
-          }
-        );
-
-        socket.to(conversationId).emit("unread-count-update", {
-          unreadCount: 0,
-          conversationId,
-          currentUserId,
-        });
-        // Notify room about all messages that were marked as seen
-        io.to(conversationId).emit("message-seen-update", {
-          messageIds: ids.map((id) => id.toString()),
-          seen: true,
-        });
-      }
-    } catch (error) {
-      console.error("Error updating seen:", error);
-    }
   });
 
   // Listen for typing events
