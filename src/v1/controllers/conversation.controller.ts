@@ -1,47 +1,46 @@
-import { NextFunction, Request, Response } from "express";
-import { Conversation } from "../../models/conversation.model";
-import { PipelineStage, Types } from "mongoose";
-import { AuthRequest } from "middleware/auth";
-
+import { NextFunction, Response } from 'express'
+import { AuthRequest } from 'middleware/auth'
+import { PipelineStage, Types } from 'mongoose'
+import { Conversation } from '../../models/conversation.model'
 export const createChat = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
-  const { participants, isGroup = false } = req.body;
-  const { _id: userId } = req.user;
+  const { participants, isGroup = false } = req.body
+  const { _id: userId } = req.user
   const existing = await Conversation.findOne({
     participants: { $all: [...participants, userId] },
-  });
+  })
   if (existing) {
-    throw new Error("Conversation already exists");
+    throw new Error('Conversation already exists')
   }
-  const users = [...participants, userId];
+  const users = [...participants, userId]
   const conversation = new Conversation({
     participants: users,
     isGroup: isGroup,
-  });
-  await conversation.save();
+  })
+  await conversation.save()
 
   const chat = {
     _id: conversation._id,
-    type: isGroup ? "group" : "direct",
+    type: isGroup ? 'group' : 'direct',
     participants: users,
-  };
+  }
   res.json({
-    message: "Conversation created successfully",
+    message: 'Conversation created successfully',
     data: chat,
-  });
-};
+  })
+}
 
 export const getConversations = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
-  let { _id: userId } = req.user;
-  let pipeline: PipelineStage[] = [];
-  userId = new Types.ObjectId(userId);
+  let { _id: userId } = req.user
+  let pipeline: PipelineStage[] = []
+  userId = new Types.ObjectId(userId)
   pipeline.push(
     {
       $match: {
@@ -52,75 +51,85 @@ export const getConversations = async (
       $addFields: {
         type: {
           $cond: {
-            if: { $eq: ["$isGroup", true] },
-            then: "group",
-            else: "direct",
+            if: { $eq: ['$isGroup', true] },
+            then: 'group',
+            else: 'direct',
           },
         },
       },
     },
     {
       $lookup: {
-        from: "messages",
-        localField: "_id",
-        foreignField: "conversationId",
-        as: "messages",
+        from: 'messages',
+        localField: '_id',
+        foreignField: 'conversationId',
+        as: 'messages',
       },
     },
     {
       $lookup: {
-        from: "messages",
-        let: { convId: "$_id" },
+        from: 'messages',
+        let: { convId: '$_id' },
         pipeline: [
           {
             $match: {
               $expr: {
                 $and: [
-                  { $eq: ["$conversationId", "$$convId"] },
-                  // ✅ Filter: only messages not seen by the user
-                  { $not: { $in: [userId, "$seenBy"] } },
+                  { $eq: ['$conversationId', '$$convId'] },
+
+                  // Exclude your own messages
+                  {
+                    $ne: ['$senderId', new Types.ObjectId(userId)],
+                  },
+
+                  // Only messages NOT seen by you
+                  {
+                    $not: {
+                      $in: [new Types.ObjectId(userId), '$seenBy'],
+                    },
+                  },
                 ],
               },
             },
           },
         ],
-        as: "unreadMessages",
+        as: 'unreadMessages',
       },
     },
     {
       $addFields: {
-        lastMessage: { $arrayElemAt: ["$messages", -1] },
+        lastMessage: { $arrayElemAt: ['$messages', -1] },
       },
     },
     {
       $addFields: {
-        "lastMessage.timestamp": {
+        'lastMessage.timestamp': {
           $ifNull: [
-            "$lastMessage.createdAt",
-            { $ifNull: ["$lastMessage.updatedAt", null] },
+            '$lastMessage.createdAt',
+            { $ifNull: ['$lastMessage.updatedAt', null] },
           ],
         },
-        unreadCount: { $size: { $ifNull: ["$unreadMessages", []] } },
+        unreadCount: { $size: { $ifNull: ['$unreadMessages', []] } },
       },
     },
     {
       $project: {
         isGroup: 0,
       },
-    }
-  );
-  const conversations = await Conversation.aggregate(pipeline).exec();
+    },
+  )
+  const conversations = await Conversation.aggregate(pipeline).exec()
   res.json({
     data: conversations,
-  });
-};
+  })
+}
 
 export const getprofileByConversationId = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
-  const { id: conversationId } = req.params;
+  const { id: conversationId } = req.params
 
   try {
     let pipeline: PipelineStage[] = [
@@ -131,10 +140,10 @@ export const getprofileByConversationId = async (
       },
       {
         $lookup: {
-          from: "users",
-          localField: "participants",
-          foreignField: "_id",
-          as: "participants",
+          from: 'users',
+          localField: 'participants',
+          foreignField: '_id',
+          as: 'participants',
         },
       },
       {
@@ -147,18 +156,18 @@ export const getprofileByConversationId = async (
           },
         },
       },
-    ];
-    const result = await Conversation.aggregate(pipeline).exec();
+    ]
+    const result = await Conversation.aggregate(pipeline).exec()
 
     if (!result || result.length === 0) {
-      res.status(404).json({ message: "Conversation not found" });
+      res.status(404).json({ message: 'Conversation not found' })
     } else {
       res.json({
         data: result[0].participants,
-      });
+      })
     }
   } catch (error) {
-    console.log("Error fetching conversation profile:", error);
-    next(error);
+    console.log('Error fetching conversation profile:', error)
+    next(error)
   }
-};
+}
