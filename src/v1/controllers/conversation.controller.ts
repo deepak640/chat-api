@@ -1,5 +1,5 @@
 import { NextFunction, Response } from 'express'
-import { AuthRequest } from 'middleware/auth'
+import { AuthRequest } from '../../middleware/auth'
 import { PipelineStage, Types } from 'mongoose'
 import { Conversation } from '../../models/conversation.model'
 export const createChat = async (

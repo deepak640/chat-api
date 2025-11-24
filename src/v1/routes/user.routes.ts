@@ -1,5 +1,5 @@
-import express, { RequestHandler } from "express";
-import upload from "../../middlewares/multer.middleware";
+import express, { RequestHandler } from 'express'
+import upload from '../../middlewares/multer.middleware'
 import {
   loginUser,
   RegisterUser,
@@ -7,15 +7,15 @@ import {
   updateById,
   getUserList,
   getUserById,
-} from "../controllers/user.controller";
-import { authorizeUser } from "middleware/auth";
+} from '../controllers/user.controller'
+import { authorizeUser } from '../../middleware/auth'
 
-const router = express.Router();
+const router = express.Router()
 
-router.post("/register", RegisterUser);
-router.post("/login", loginUser);
-router.get("/", getAllUser);
-router.get("/list", authorizeUser as RequestHandler, getUserList);
-router.patch("/:id", upload.single("file"), updateById);
-router.get("/:id", getUserById);
-export default router;
+router.post('/register', RegisterUser)
+router.post('/login', loginUser)
+router.get('/', getAllUser)
+router.get('/list', authorizeUser as RequestHandler, getUserList)
+router.patch('/:id', upload.single('file'), updateById)
+router.get('/:id', getUserById)
+export default router

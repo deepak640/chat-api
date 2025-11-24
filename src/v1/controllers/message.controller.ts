@@ -1,16 +1,16 @@
-import { NextFunction, Request, Response } from "express";
-import { Message } from "../../models/message.model";
-import mongoose from "mongoose";
-import { AuthRequest } from "middleware/auth";
+import { NextFunction, Request, Response } from 'express'
+import { Message } from '../../models/message.model'
+import mongoose from 'mongoose'
+import { AuthRequest } from '../../iddleware/auth'
 
 export const getAllMessages = async (
   req: AuthRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
-    const { conversationId } = req.params;
-    const { _id: userId } = req.user;
+    const { conversationId } = req.params
+    const { _id: userId } = req.user
     const messages = await Message.aggregate([
       {
         $match: {
@@ -19,14 +19,14 @@ export const getAllMessages = async (
       },
       {
         $lookup: {
-          from: "users",
-          localField: "senderId",
-          foreignField: "_id",
-          as: "senderInfo",
+          from: 'users',
+          localField: 'senderId',
+          foreignField: '_id',
+          as: 'senderInfo',
         },
       },
       {
-        $unwind: "$senderInfo",
+        $unwind: '$senderInfo',
       },
       {
         $sort: {
@@ -36,7 +36,7 @@ export const getAllMessages = async (
       {
         $addFields: {
           read: {
-            $in: [new mongoose.Types.ObjectId(userId), "$seenBy"],
+            $in: [new mongoose.Types.ObjectId(userId), '$seenBy'],
           },
         },
       },
@@ -44,27 +44,27 @@ export const getAllMessages = async (
         $project: {
           _id: 1,
           sender: {
-            name: "$senderInfo.name",
-            email: "$senderInfo.email",
-            avatar: "$senderInfo.photo",
+            name: '$senderInfo.name',
+            email: '$senderInfo.email',
+            avatar: '$senderInfo.photo',
           },
           read: 1,
-          content: "$content",
+          content: '$content',
           senderId: 1,
           conversationId: 1,
-          timestamp: "$createdAt",
+          timestamp: '$createdAt',
         },
       },
-    ]);
+    ])
 
     res.status(200).json({
-      message: "Messages fetched successfully",
+      message: 'Messages fetched successfully',
       data: messages,
-    });
+    })
   } catch (error) {
-    console.log("🚀 ----------------------------------🚀");
-    console.log("🚀 ~ getAllMessages ~ error:", error);
-    console.log("🚀 ----------------------------------🚀");
-    next(error);
+    console.log('🚀 ----------------------------------🚀')
+    console.log('🚀 ~ getAllMessages ~ error:', error)
+    console.log('🚀 ----------------------------------🚀')
+    next(error)
   }
-};
+}
