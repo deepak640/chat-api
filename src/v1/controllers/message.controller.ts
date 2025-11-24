@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from 'express'
 import { Message } from '../../models/message.model'
 import mongoose from 'mongoose'
-import { AuthRequest } from '../../iddleware/auth'
+import { AuthRequest } from '../../middleware/auth'
 
 export const getAllMessages = async (
   req: AuthRequest,
