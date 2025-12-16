@@ -51,41 +51,41 @@ export const getConversations = async (
       $addFields: {
         type: {
           $cond: {
-            if: { $eq: ['$isGroup', true] },
-            then: 'group',
-            else: 'direct',
+            if: { $eq: ["$isGroup", true] },
+            then: "group",
+            else: "direct",
           },
         },
       },
     },
     {
       $lookup: {
-        from: 'messages',
-        localField: '_id',
-        foreignField: 'conversationId',
-        as: 'messages',
+        from: "messages",
+        localField: "_id",
+        foreignField: "conversationId",
+        as: "messages",
       },
     },
     {
       $lookup: {
-        from: 'messages',
-        let: { convId: '$_id' },
+        from: "messages",
+        let: { convId: "$_id" },
         pipeline: [
           {
             $match: {
               $expr: {
                 $and: [
-                  { $eq: ['$conversationId', '$$convId'] },
+                  { $eq: ["$conversationId", "$$convId"] },
 
                   // Exclude your own messages
                   {
-                    $ne: ['$senderId', new Types.ObjectId(userId)],
+                    $ne: ["$senderId", new Types.ObjectId(userId)],
                   },
 
                   // Only messages NOT seen by you
                   {
                     $not: {
-                      $in: [new Types.ObjectId(userId), '$seenBy'],
+                      $in: [new Types.ObjectId(userId), "$seenBy"],
                     },
                   },
                 ],
@@ -93,31 +93,32 @@ export const getConversations = async (
             },
           },
         ],
-        as: 'unreadMessages',
+        as: "unreadMessages",
       },
     },
     {
       $addFields: {
-        lastMessage: { $arrayElemAt: ['$messages', -1] },
+        lastMessage: { $arrayElemAt: ["$messages", -1] },
+        unreadCount: { $size: { $ifNull: ["$unreadMessages", []] } },
       },
     },
     {
       $addFields: {
-        'lastMessage.timestamp': {
+        "lastMessage.timestamp": {
           $ifNull: [
-            '$lastMessage.createdAt',
-            { $ifNull: ['$lastMessage.updatedAt', null] },
+            "$lastMessage.createdAt",
+            { $ifNull: ["$lastMessage.updatedAt", null] },
           ],
         },
-        unreadCount: { $size: { $ifNull: ['$unreadMessages', []] } },
+        unreadCount: { $size: { $ifNull: ["$unreadMessages", []] } },
       },
     },
     {
       $project: {
         isGroup: 0,
       },
-    },
-  )
+    }
+  );
   const conversations = await Conversation.aggregate(pipeline).exec()
   res.json({
     data: conversations,

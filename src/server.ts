@@ -18,7 +18,7 @@ type MessageData = {
 };
 import createError from "http-errors";
 import { Conversation } from "./models/conversation.model";
-import mongoose, { Types } from "mongoose";
+import { Types } from "mongoose";
 import { User } from "./models/user.model";
 import { Message } from "./models/message.model";
 import path from "path";
@@ -102,117 +102,47 @@ const onlineUsers = new Map();
 
 // Socket.IO event handlers
 io.on("connection", async (socket: Socket) => {
-  const { userId, conversationId } = socket.handshake.query;
-  // Check if conversationId is a valid MongoDB ObjectId
-  if (!Types.ObjectId.isValid(conversationId as string)) {
-    const errorMsg = `Invalid conversationId: ${conversationId}`;
-    socket.emit("error", { message: errorMsg });
+  const { userId } = socket.handshake.query as { userId: string };
+  if (!userId || !Types.ObjectId.isValid(userId)) {
     socket.disconnect();
     return;
   }
 
-  const conversation = await Conversation.findOne({
-    _id: conversationId,
-    participants: { $in: [userId] },
+  /* ===========================
+     1️⃣ GLOBAL ONLINE PRESENCE
+     =========================== */
+
+  if (!onlineUsers.has(userId)) {
+    onlineUsers.set(userId, new Set());
+  }
+  onlineUsers.get(userId)!.add(socket.id);
+
+  // notify globally (optional)
+  io.emit("global-user-status", {
+    userId,
+    status: "online",
   });
 
-  if (!conversation) {
-    const errorMsg = `Socket ${socket.id} tried to join conversation ${conversationId} but is not a participant`;
-    socket.emit("error", { message: errorMsg });
-    socket.disconnect();
-    return;
-  }
+  /* ===========================
+     2️⃣ JOIN CONVERSATION
+     =========================== */
 
-  if (conversationId) {
-    socket.join(conversationId as string);
+  socket.on("join_chat", async ({ conversationId }) => {
+    if (!Types.ObjectId.isValid(conversationId)) return;
+    const conversation = await Conversation.findOne({
+      _id: conversationId,
+      participants: { $in: [userId] },
+    });
 
-    // Mark unseen messages as seen by this user
-    onlineUsers.set(userId, socket.id);
+    if (!conversation) return;
+
+    socket.join(conversationId);
+
+    /* ---- Mark messages as READ ---- */
     const unseenMessages = await Message.find({
       conversationId,
+      senderId: { $ne: userId },
       seenBy: { $ne: userId },
-    }).select("_id");
-
-    let ids: Types.ObjectId[] = [];
-    if (unseenMessages.length > 0) {
-      ids = unseenMessages.map((m) => m._id);
-      if (ids.length > 0) {
-        io.to(conversationId).emit("message-seen", {
-          conversationId,
-          status: true,
-          messageIds: ids,
-        });
-      }
-      await Message.updateMany(
-        { _id: { $in: ids } },
-        {
-          $addToSet: { seenBy: userId },
-          $set: { seenAt: new Date() },
-        }
-      );
-    }
-
-    // Notify others in the room that this user is online
-    io.to(conversationId as string).emit("user-status", {
-      userId,
-      status: true,
-    });
-
-    // Check the status of the other user in the conversation and notify the current user
-    const otherUser = conversation.participants.find(
-      (p) => p.toString() !== userId
-    );
-    if (otherUser && onlineUsers.has(otherUser.toString())) {
-      socket.emit("user-status", {
-        userId: otherUser.toString(),
-        status: true,
-        messageSeen: {
-          conversationId,
-          status: true,
-          messageIds: ids,
-        },
-      });
-    }
-  }
-
-  socket.on("sendImage", async ({ imageUrl, hashId, conversationId }) => {
-    const message = new Message({
-      conversationId,
-      content: imageUrl,
-      type: "image",
-      sender: userId,
-    });
-    await message.save();
-    io.to(conversationId).emit("receive-message", {
-      imageUrl,
-      hashId,
-      conversationId,
-    });
-  });
-
-  socket.on("send-message", async (data: MessageData) => {
-    const user = await User.findById(userId);
-    const message = new Message({
-      conversationId: data.conversationId,
-      content: data.content,
-      senderId: userId,
-      sender: {
-        name: user?.name,
-        avatar: user?.photo,
-        email: user?.email,
-      },
-    });
-    await message.save();
-
-    let otherUserId: string[] = [];
-    onlineUsers.forEach((value, key) => {
-      if (key !== userId) {
-        otherUserId = [key];
-      }
-    });
-    const unseenMessages = await Message.find({
-      conversationId: data.conversationId,
-      seenBy: { $nin: otherUserId },
     }).select("_id");
 
     if (unseenMessages.length > 0) {
@@ -221,70 +151,165 @@ io.on("connection", async (socket: Socket) => {
       await Message.updateMany(
         { _id: { $in: ids } },
         {
-          $addToSet: { seenBy: otherUserId },
+          $addToSet: { seenBy: userId },
           $set: { seenAt: new Date() },
         }
       );
 
-      // Notify room about messages marked as seen by the other user
+      const sockets = onlineUsers.get(userId);
 
-      // Inform the other user (if connected) that their unread count is now zero
-      // socket.to(data.conversationId).emit("unread-count-update", {
-      //   unreadCount: 0,
-      //   conversationId: data.conversationId,
-      //   currentUserId: otherUserId[0],
-      // });
+      if (sockets) {
+        sockets.forEach((socketId: string) => {
+          io.to(socketId).emit("unread-count-update", {
+            conversationId,
+            unreadCount: 0,
+          });
+        });
+      }
+
+      io.to(conversationId).emit("message-seen", {
+        conversationId,
+        userId,
+        messageIds: ids,
+      });
     }
-    io.to(data.conversationId).emit("last-message", {
-      ...data,
+
+    /* ---- Conversation-level presence ---- */
+    socket.to(conversationId).emit("user-in-chat", {
+      userId,
+      conversationId,
+    });
+  });
+
+  /* ===========================
+     3️⃣ LEAVE CONVERSATION
+     =========================== */
+
+  socket.on("leave_chat", ({ conversationId }) => {
+    socket.leave(conversationId);
+
+    socket.to(conversationId).emit("user-left-chat", {
+      userId,
+      conversationId,
+    });
+  });
+
+  /* ===========================
+     4️⃣ SEND MESSAGE
+     =========================== */
+
+  socket.on("send-message", async (data: MessageData) => {
+    const user = await User.findById(userId);
+    const message = new Message({
+      conversationId: data.conversationId,
+      content: data.content,
+      senderId: userId,
+      seenBy: [userId], // sender has seen it
       sender: {
         name: user?.name,
         avatar: user?.photo,
         email: user?.email,
       },
-      timestamp: new Date(),
     });
-    console.log("Emitting message to room:", otherUserId);
+
+    await message.save();
+
+    // update conversation metadata
+    await Conversation.findByIdAndUpdate(data.conversationId, {
+      lastMessage: message._id,
+      updatedAt: new Date(),
+    });
+
+    /* ---- Deliver message ---- */
     io.to(data.conversationId).emit("receive-message", {
-      ...data,
-      _id: message._id,
+      ...message.toObject(),
+      read: false,
       sender: {
         name: user?.name,
         avatar: user?.photo,
         email: user?.email,
       },
-      read: otherUserId.length ? true : false,
       timestamp: new Date(),
     });
-  });
 
-  // Listen for typing events
-  socket.on("typing-start", (data: MessageData) => {
-    socket.to(data.conversationId).emit("typing-start-notification", {
-      hashId: data.hashId,
+    const conversation = await Conversation.findById(
+      data.conversationId
+    ).select("participants");
+
+    /* ---- Sidebar instant update ---- */
+    conversation?.participants.forEach((participantId) => {
+      const sockets = onlineUsers.get(participantId.toString());
+
+      if (sockets) {
+        sockets.forEach((socketId: string) => {
+          io.to(socketId).emit("last-message", {
+            conversationId: data.conversationId,
+            lastMessage: {
+              ...message.toObject(),
+              timestamp: message.createdAt,
+            },
+          });
+        });
+      }
+    });
+
+    /* ---- Unread count update ---- */
+    conversation?.participants.forEach((participantId) => {
+      if (participantId.toString() === userId) return; // skip sender
+
+      const sockets = onlineUsers.get(participantId.toString());
+
+      if (sockets) {
+        sockets.forEach((socketId: string) => {
+          io.to(socketId).emit("unread-count-update", {
+            conversationId: data.conversationId,
+            delta: +1,
+          });
+        });
+      }
     });
   });
 
-  socket.on("typing-stop", (data: MessageData) => {
-    socket.to(data.conversationId).emit("typing-stop-notification", {
-      hashId: data.hashId,
-    });
+  /* ===========================
+     5️⃣ TYPING INDICATORS
+     =========================== */
+
+  socket.on("typing-start", ({ conversationId }) => {
+    socket.to(conversationId).emit("typing-start", { userId });
   });
+
+  socket.on("typing-stop", ({ conversationId }) => {
+    socket.to(conversationId).emit("typing-stop", { userId });
+  });
+
+  /* ===========================
+     6️⃣ DISCONNECT
+     =========================== */
 
   socket.on("disconnect", async () => {
-    console.log(`Client disconnected: ${socket.id}`);
-    if (userId) {
-      onlineUsers.delete(userId);
-      const lastActive = new Date();
-      await User.findOneAndUpdate({ _id: userId }, { lastActive });
-      io.to(conversationId as string).emit("user-status", {
-        userId,
-        status: false,
-        lastActive,
-      });
+    const userSockets = onlineUsers.get(userId);
+
+    if (userSockets) {
+      userSockets.delete(socket.id);
+
+      // user completely offline
+      if (userSockets.size === 0) {
+        onlineUsers.delete(userId);
+
+        await User.findByIdAndUpdate(userId, {
+          lastActive: new Date(),
+        });
+
+        io.emit("global-user-status", {
+          userId,
+          status: "offline",
+          lastActive: new Date(),
+        });
+      }
     }
   });
 });
+
 // Join a room with conversationId
 
 // Start server with HTTP server instead of Express
