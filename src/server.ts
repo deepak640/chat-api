@@ -117,10 +117,15 @@ io.on("connection", async (socket: Socket) => {
   }
   onlineUsers.get(userId)!.add(socket.id);
 
+  // send current online users to the connected client
+   socket.emit("online-users", {
+     users: Array.from(onlineUsers.keys()),
+   });
+
   // notify globally (optional)
   io.emit("global-user-status", {
     userId,
-    status: "online",
+    status: true,
   });
 
   /* ===========================
@@ -181,23 +186,8 @@ io.on("connection", async (socket: Socket) => {
     });
   });
 
-  /* ===========================
-     3️⃣ LEAVE CONVERSATION
-     =========================== */
 
-  socket.on("leave_chat", ({ conversationId }) => {
-    socket.leave(conversationId);
-
-    socket.to(conversationId).emit("user-left-chat", {
-      userId,
-      conversationId,
-    });
-  });
-
-  /* ===========================
-     4️⃣ SEND MESSAGE
-     =========================== */
-
+  // Send message
   socket.on("send-message", async (data: MessageData) => {
     const user = await User.findById(userId);
     const message = new Message({
@@ -302,7 +292,7 @@ io.on("connection", async (socket: Socket) => {
 
         io.emit("global-user-status", {
           userId,
-          status: "offline",
+          status: false,
           lastActive: new Date(),
         });
       }
