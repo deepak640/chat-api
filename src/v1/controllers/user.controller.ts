@@ -145,7 +145,6 @@ export const updateById = async (
 ) => {
   try {
     const { id } = req.params
-    console.log(JSON.stringify(req.body.photo), null, 2)
     const user = await User.findById(id)
     if (!user && !req.file) {
       res.status(400).json({ success: false, message: 'No file uploaded' })
