@@ -12,6 +12,9 @@ export interface IMessage {
   };
   content: string;
   type: "text" | "image" | "video" | "audio" | "file";
+  fileUrl?: string;
+  fileName?: string;
+  fileSize?: string;
   seenBy: Types.ObjectId[];
   createdAt: Date;
   updateAt: Date;
@@ -28,6 +31,9 @@ const MessageSchema = new Schema<IMessage>(
       enum: ["text", "image", "video", "audio", "file"],
       default: "text",
     },
+    fileUrl: String,
+    fileName: String,
+    fileSize: String,
     sender: {
       name: String,
       avatar: String,

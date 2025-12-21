@@ -15,6 +15,10 @@ type MessageData = {
   conversationId: string;
   content: string;
   hashId: string;
+  type?: "text" | "image" | "video" | "audio" | "file";
+  fileUrl?: string;
+  fileName?: string;
+  fileSize?: string;
 };
 import createError from "http-errors";
 import { Conversation } from "./models/conversation.model";
@@ -48,8 +52,8 @@ interface User {
 
 // Middlewares
 app.use(express.json());
-app.use(express.json({ limit: "1024mb" }));
-app.use(express.urlencoded({ extended: true, limit: "1024mb" }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(logger("dev"));
 app.use(((req: Request, res: Response, next: NextFunction) => {
   res.header("Access-Control-Allow-Origin", "*");
@@ -194,6 +198,10 @@ io.on("connection", async (socket: Socket) => {
       conversationId: data.conversationId,
       content: data.content,
       senderId: userId,
+      type: data.type || "text",
+      fileUrl: data.fileUrl,
+      fileName: data.fileName,
+      fileSize: data.fileSize,
       seenBy: [userId], // sender has seen it
       sender: {
         name: user?.name,

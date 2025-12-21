@@ -53,6 +53,10 @@ export const getAllMessages = async (
           senderId: 1,
           conversationId: 1,
           timestamp: '$createdAt',
+          type: 1,
+          fileUrl: 1,
+          fileName: 1,
+          fileSize: 1,
         },
       },
     ])
