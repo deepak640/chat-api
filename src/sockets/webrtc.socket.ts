@@ -1,27 +1,31 @@
 import { Server, Socket } from "socket.io";
+import { User } from "../models/user.model";
 
 const registerWebRTCSockets = (io: Server, socket: Socket) => {
-  socket.on("call-user", ({ toUserId, offer }) => {
-    socket.to(toUserId).emit("incoming-call", {
-      fromUserId: socket.id,
+  const { userId } = socket.handshake.query as { userId: string };
+
+  socket.on("call-user", async ({ toUserId, offer }) => {
+    const fromUser = await User.findById(userId).select("name photo email");
+    socket.to(`user_${toUserId}`).emit("incoming-call", {
+      fromUser,
       offer,
     });
   });
 
   socket.on("accept-call", ({ toUserId, answer }) => {
-    socket.to(toUserId).emit("call-accepted", {
+    socket.to(`user_${toUserId}`).emit("call-accepted", {
       answer,
     });
   });
 
   socket.on("ice-candidate", ({ toUserId, candidate }) => {
-    socket.to(toUserId).emit("ice-candidate", {
+    socket.to(`user_${toUserId}`).emit("ice-candidate", {
       candidate,
     });
   });
 
   socket.on("end-call", ({ toUserId }) => {
-    socket.to(toUserId).emit("call-ended");
+    socket.to(`user_${toUserId}`).emit("call-ended");
   });
 };
 

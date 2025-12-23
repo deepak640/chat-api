@@ -23,6 +23,7 @@ const registerChatSockets = async (io: Server, socket: Socket) => {
     onlineUsers.set(userId, new Set());
   }
   onlineUsers.get(userId)!.add(socket.id);
+  socket.join(`user_${userId}`); // Join personal room
 
   socket.emit("online-users", {
     users: Array.from(onlineUsers.keys()),
